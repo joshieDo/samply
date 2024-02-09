@@ -15,6 +15,7 @@ use tempfile::NamedTempFile;
 
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -133,6 +134,14 @@ struct ServerArgs {
     /// The port to use for the local web server
     #[arg(short = 'P', long, default_value = "3000+")]
     port: String,
+
+    /// The port to use for the local web server
+    #[arg(short = 'H', long, default_value = "127.0.0.1")]
+    host: String,
+
+    /// The port to use for the local web server
+    #[arg(short = 'O', long, default_value = "localhost")]
+    origin: String,
 
     /// Print debugging output.
     #[arg(short, long)]
@@ -274,8 +283,24 @@ impl ServerArgs {
                 std::process::exit(1)
             }
         };
+
+        let port = match &port_selection {
+            PortSelection::OnePort(p) => *p,
+            PortSelection::TryMultiple(p) => p.start,
+        };
+
+        let host_selection = match format!("{}:{}", self.host, port).parse::<SocketAddr>() {
+            Ok(host) => host,
+            Err(e) => {
+                eprintln!("Could not parse host  got {}, error: {}", self.host, e);
+                std::process::exit(1)
+            }
+        };
+
         ServerProps {
+            host_selection,
             port_selection,
+            origin: self.origin.clone(),
             verbose: self.verbose,
             open_in_browser,
         }

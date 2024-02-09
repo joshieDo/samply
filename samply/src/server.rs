@@ -24,7 +24,9 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct ServerProps {
+    pub host_selection: SocketAddr,
     pub port_selection: PortSelection,
+    pub origin: String,
     pub verbose: bool,
     pub open_in_browser: bool,
 }
@@ -33,7 +35,9 @@ pub struct ServerProps {
 pub async fn start_server_main(file: &Path, props: ServerProps) {
     start_server(
         Some(file),
+        props.host_selection,
         props.port_selection,
+        props.origin,
         props.verbose,
         props.open_in_browser,
     )
@@ -71,7 +75,9 @@ impl PortSelection {
 
 async fn start_server(
     profile_filename: Option<&Path>,
+    host_selection: SocketAddr,
     port_selection: PortSelection,
+    origin: String,
     verbose: bool,
     open_in_browser: bool,
 ) {
@@ -94,11 +100,11 @@ async fn start_server(
         HashMap::new()
     };
 
-    let (builder, addr) = make_builder_at_port(port_selection);
+    let (builder, addr) = make_builder_at_port(host_selection, port_selection);
 
     let token = generate_token();
     let path_prefix = format!("/{token}");
-    let server_origin = format!("http://{addr}");
+    let server_origin = format!("http://{origin}:{}", addr.port());
     let symbol_server_url = format!("{server_origin}{path_prefix}");
     let mut template_values: HashMap<&'static str, String> = HashMap::new();
     template_values.insert("SERVER_URL", server_origin.clone());
@@ -230,10 +236,13 @@ fn generate_token() -> String {
     nix_base32::to_nix_base32(&bytes)
 }
 
-fn make_builder_at_port(port_selection: PortSelection) -> (Builder<AddrIncoming>, SocketAddr) {
+fn make_builder_at_port(
+    mut addr: SocketAddr,
+    port_selection: PortSelection,
+) -> (Builder<AddrIncoming>, SocketAddr) {
     match port_selection {
         PortSelection::OnePort(port) => {
-            let addr = SocketAddr::from(([127, 0, 0, 1], port));
+            addr.set_port(port);
             match Server::try_bind(&addr) {
                 Ok(builder) => (builder, addr),
                 Err(e) => {
@@ -245,7 +254,7 @@ fn make_builder_at_port(port_selection: PortSelection) -> (Builder<AddrIncoming>
         PortSelection::TryMultiple(range) => {
             let mut error = None;
             for port in range.clone() {
-                let addr = SocketAddr::from(([127, 0, 0, 1], port));
+                addr.set_port(port);
                 match Server::try_bind(&addr) {
                     Ok(builder) => return (builder, addr),
                     Err(e) => {
